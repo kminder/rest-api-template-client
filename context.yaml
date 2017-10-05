@@ -1,0 +1,4 @@
+api_host: example-host
+api_path: example-path/
+api_key: example-key
+api_value: example-value

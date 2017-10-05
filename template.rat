@@ -1,0 +1,6 @@
+POST http://{{api_host}}:80/{{api_path}}
+Content-Type: application/json
+
+{
+    "{{api_key}}": "{{api_value}}"
+}

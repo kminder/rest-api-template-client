@@ -11,10 +11,10 @@ import yaml
 
 def parseArgs():
     parser = argparse.ArgumentParser()
-    parser.add_argument( "-t", "--test", action="store_true", help="populate and print the request without submitting" )
-    parser.add_argument( "-e", "--extract", help="Extract from body via JSONPath query", metavar="query" )
+    parser.add_argument( "-t", "--test", action="store_true", help="test template expansion without submitting request" )
+    parser.add_argument( "-e", "--extract", help="extract from body via JSONPath query", metavar="query" )
     parser.add_argument( "-o", "--output", default="shb", help="Output options", metavar="format" )
-    parser.add_argument( "context", nargs='*', help="context file names" )
+    parser.add_argument( "context", nargs='*', help="context values and file names" )
     parser.add_argument( "template", nargs=1, help="template file name" )
     args = parser.parse_args()
     return args
@@ -96,8 +96,12 @@ def renderTemplate( template, context ):
 
 def parseMethodLine( request, line ):
     parts = line.split()
-    if not parts or len(parts) < 2:
-        raise ValueError( "Invalid method line: " + line )
+    if not parts or len(parts) == 0:
+        print "ERROR: Invalid empty method line"
+        sys.exit( -1 )
+    if len(parts) == 1:
+        print "ERROR: Invalid method line missing address: %s" % ( line )
+        sys.exit( -1 )
     request['method'] = parts[0]
     request['url'] = parts[1]
     if len(parts) > 2:
@@ -146,7 +150,9 @@ def parseRequest( text ):
     return request
 
 def executeRequest( request, context ):
-    method = request['method'].upper()
+    method = request.get('method')
+    if method:
+        method = method.uppe()
     proxies = context.get( 'proxies' )
     cookies = context.get( 'cookies' )
     response = None
@@ -160,7 +166,8 @@ def executeRequest( request, context ):
         elif method == 'DELETE':
             response = requests.delete( url=request['url'], headers=request['headers'], cookies=cookies, proxies=proxies )
         else:
-            raise ValueError('Invalid HTTP method: ' + method )
+            print "ERROR: Invalid method: %s" % (method)
+            sys.exit(-1)
     except requests.exceptions.ConnectionError as e:
         print "ERROR: Connection failure: %s" % (e.message)
         sys.exit( -1 )
