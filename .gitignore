@@ -207,3 +207,5 @@ venv.bak/
 # mypy
 .mypy_cache/
 
+# IntelliJ
+.idea

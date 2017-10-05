@@ -7,13 +7,28 @@ import jinja2, json, jsonpath_rw
 import os
 import requests
 import sys
+import traceback
 import yaml
+
+class FatalError(Exception):
+    def __init__(self, message, code=None, cause=None):
+        self.message = message
+        self.code = code
+        self.cause = cause
+
+    def exit( self, debug=False ):
+        sys.stderr.write( "%s\n" % self.message )
+        if self.code:
+            sys.exit( self.code )
+        else:
+            sys.exit( 1 )
 
 def parseArgs():
     parser = argparse.ArgumentParser()
-    parser.add_argument( "-t", "--test", action="store_true", help="test template expansion without submitting request" )
-    parser.add_argument( "-e", "--extract", help="extract from body via JSONPath query", metavar="query" )
     parser.add_argument( "-o", "--output", default="shb", help="Output options", metavar="format" )
+    parser.add_argument( "-e", "--extract", help="extract from body via JSONPath query", metavar="query" )
+    parser.add_argument( "-t", "--test", action="store_true", help="test template expansion without submitting request" )
+    #parser.add_argument( "-d", "--debug", action="store_true", help="enable debug logging" )
     parser.add_argument( "context", nargs='*', help="context values and file names" )
     parser.add_argument( "template", nargs=1, help="template file name" )
     args = parser.parse_args()
@@ -39,8 +54,9 @@ def loadTemplate( environment, templateFileNames ):
     try:
         template = environment.get_template( fileName )
     except jinja2.exceptions.TemplateSyntaxError as e:
-        print "ERROR: Template syntax error: %s at line %d" % (e.message, e.lineno)
-        sys.exit( -1 )
+        raise FatalError( "ERROR: Template syntax error on line %d of '%s'." % (e.lineno, e.message) )
+    except jinja2.exceptions.TemplateNotFound as e:
+        raise FatalError( "ERROR: Template file '%s' not found." % fileName, cause=e )
     return template
 
 def loadContextFile( context, contextFileName ):
@@ -70,8 +86,7 @@ def loadContextString( context, contextString ):
             context[ name ] = value
             valid = True
     if not valid:
-        sys.stderr.write( "ERROR: Invalid context string: %s\n" % ( contextString ) )
-        sys.exit( -1 )
+        raise FatalError( "ERROR: Invalid context string '%s'." % ( contextString ) )
     return context
 
 def loadContext( contextSources ):
@@ -83,25 +98,21 @@ def loadContext( contextSources ):
             elif "=" in contextSource or ":" in contextSource:
                 context = loadContextString( context, contextSource )
             else:
-                sys.stderr.write( "ERROR: Invalid context source: %s\n" % ( contextSource ) )
-                sys.exit( -1 )
+                raise FatalError( "ERROR: Invalid context source '%s'." % ( contextSource ) )
     return context
 
 def renderTemplate( template, context ):
     try:
         return template.render( context )
     except jinja2.exceptions.UndefinedError as e:
-        sys.stderr.write( "ERROR: Template value %s\n" % ( e.message ) )
-        sys.exit( -1 )
+        raise FatalError( "ERROR: Template value %s in context." % ( e.message ), cause=e )
 
 def parseMethodLine( request, line ):
     parts = line.split()
     if not parts or len(parts) == 0:
-        print "ERROR: Invalid empty method line"
-        sys.exit( -1 )
+        raise FatalError( "ERROR: Template contains empty method line." )
     if len(parts) == 1:
-        print "ERROR: Invalid method line missing address: %s" % ( line )
-        sys.exit( -1 )
+        raise FatalError( "ERROR: Template method line '%s' missing address." % ( line ) )
     request['method'] = parts[0]
     request['url'] = parts[1]
     if len(parts) > 2:
@@ -166,14 +177,11 @@ def executeRequest( request, context ):
         elif method == 'DELETE':
             response = requests.delete( url=request['url'], headers=request['headers'], cookies=cookies, proxies=proxies )
         else:
-            print "ERROR: Invalid method: %s" % (method)
-            sys.exit(-1)
+            raise FatalError( "ERROR: Template contains invalid method '%s'." % (method) )
     except requests.exceptions.ConnectionError as e:
-        print "ERROR: Connection failure: %s" % (e.message)
-        sys.exit( -1 )
+        raise FatalError( "ERROR: Connection failure occurred: %s" % (e.message), cause=e )
     except requests.exceptions.RequestException as e:
-        print "ERROR: Communication failure: %s" % (e.message)
-        sys.exit( -1 )
+        raise FatalError( "ERROR: Communication failure occurred: %s" % (e.message), cause=e )
     return response
 
 def printRequest( request ):
@@ -236,20 +244,23 @@ def getExitStatus( response ):
     return status
 
 def main():
-    args = parseArgs();
-    templateFileName = args.template
-    environment = createEnvironment()
-    template = loadTemplate( environment, templateFileName )
-    context = loadContext( args.context )
-    concrete = renderTemplate( template, context )
+    args = parseArgs()
+    try:
+        templateFileName = args.template
+        environment = createEnvironment()
+        template = loadTemplate( environment, templateFileName )
+        context = loadContext( args.context )
+        concrete = renderTemplate( template, context )
 
-    request = parseRequest( concrete )
-    if args.test:
-        printRequest( request )
-        sys.exit( 0 )
-    else:
-        response = executeRequest( request, context )
-        printResponse( response, args )
-        sys.exit( getExitStatus( response ) )
+        request = parseRequest( concrete )
+        if args.test:
+            printRequest( request )
+            sys.exit( 0 )
+        else:
+            response = executeRequest( request, context )
+            printResponse( response, args )
+            sys.exit( getExitStatus( response ) )
+    except FatalError as e:
+        e.exit()
 
 if __name__ == "__main__": main()
