@@ -12,8 +12,8 @@ import yaml
 def parseArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument( "-t", "--test", action="store_true", help="populate and print the request without submitting" )
-    parser.add_argument( "-e", "--extract", help="extract JSONPath" )
-    parser.add_argument( "-o", "--output", default="shb", help="Output options" )
+    parser.add_argument( "-e", "--extract", help="Extract from body via JSONPath query", metavar="query" )
+    parser.add_argument( "-o", "--output", default="shb", help="Output options", metavar="format" )
     parser.add_argument( "context", nargs='*', help="context file names" )
     parser.add_argument( "template", nargs=1, help="template file name" )
     args = parser.parse_args()
@@ -28,14 +28,19 @@ def user():
 def createEnvironment():
     environment = jinja2.Environment(
         loader = jinja2.FileSystemLoader( './' ),
-        undefined = jinja2.StrictUndefined )
+        undefined = jinja2.StrictUndefined,
+        autoescape=True )
     environment.globals['now'] = now
     environment.globals['user'] = user
     return environment
 
 def loadTemplate( environment, templateFileNames ):
     fileName = templateFileNames[0]
-    template = environment.get_template( fileName )
+    try:
+        template = environment.get_template( fileName )
+    except jinja2.exceptions.TemplateSyntaxError as e:
+        print "ERROR: Template syntax error: %s at line %d" % (e.message, e.lineno)
+        sys.exit( -1 )
     return template
 
 def loadContextFile( context, contextFileName ):
@@ -52,13 +57,18 @@ def loadContextString( context, contextString ):
     if not context:
         context = {}
     if contextString:
+        parts = None
         if "=" in contextString:
             parts = contextString.split( "=" )
+        elif ":" in contextString:
+            parts = contextString.split( ":" )
+        if parts:
+            name = parts[0].strip()
+            value = ""
             if len( parts ) == 2:
-                name = parts[0].strip()
                 value = parts[1].strip()
-                context[ name ] = value
-                valid = True
+            context[ name ] = value
+            valid = True
     if not valid:
         sys.stderr.write( "ERROR: Invalid context string: %s\n" % ( contextString ) )
         sys.exit( -1 )
@@ -70,7 +80,7 @@ def loadContext( contextSources ):
         for contextSource in contextSources:
             if os.path.isfile( contextSource ):
                 context = loadContextFile( context, contextSource )
-            elif "=" in contextSource:
+            elif "=" in contextSource or ":" in contextSource:
                 context = loadContextString( context, contextSource )
             else:
                 sys.stderr.write( "ERROR: Invalid context source: %s\n" % ( contextSource ) )
@@ -139,16 +149,24 @@ def executeRequest( request, context ):
     method = request['method'].upper()
     proxies = context.get( 'proxies' )
     cookies = context.get( 'cookies' )
-    if method == 'GET':
-        response = requests.get( url=request['url'], headers=request['headers'], cookies=cookies, proxies=proxies )
-    elif method == 'POST':
-        response = requests.post( url=request['url'], headers=request['headers'], cookies=cookies, proxies=proxies, data=request['body'] )
-    elif method == 'PUT':
-        response = requests.put( url=request['url'], headers=request['headers'], cookies=cookies, proxies=proxies, data=request['body'] )
-    elif method == 'DELETE':
-        response = requests.delete( url=request['url'], headers=request['headers'], cookies=cookies, proxies=proxies )
-    else:
-        raise ValueError('Invalid HTTP method: ' + method )
+    response = None
+    try:
+        if method == 'GET':
+            response = requests.get( url=request['url'], headers=request['headers'], cookies=cookies, proxies=proxies )
+        elif method == 'POST':
+            response = requests.post( url=request['url'], headers=request['headers'], cookies=cookies, proxies=proxies, data=request['body'] )
+        elif method == 'PUT':
+            response = requests.put( url=request['url'], headers=request['headers'], cookies=cookies, proxies=proxies, data=request['body'] )
+        elif method == 'DELETE':
+            response = requests.delete( url=request['url'], headers=request['headers'], cookies=cookies, proxies=proxies )
+        else:
+            raise ValueError('Invalid HTTP method: ' + method )
+    except requests.exceptions.ConnectionError as e:
+        print "ERROR: Connection failure: %s" % (e.message)
+        sys.exit( -1 )
+    except requests.exceptions.RequestException as e:
+        print "ERROR: Communication failure: %s" % (e.message)
+        sys.exit( -1 )
     return response
 
 def printRequest( request ):
