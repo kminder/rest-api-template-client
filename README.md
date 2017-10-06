@@ -73,7 +73,7 @@ optional arguments:
 ```
 ## Functions
 
-There are build in functions that can be used in templates.
+There are built in functions that can be used in templates.
 
 - now() - Retuns the current date/time in YYYYMMddhhmmss format.
 - user() - Retuns the name of the currrent user.  
@@ -117,7 +117,7 @@ Information can be extracted from JSON responses using JSONPath syntax.
 ## Formatting output
 The information output can be controlled by the -o parameter.
 The value of this parameter can be any combination of the following:
-- s - Display the status code an text.
+- s - Display the status code and text.
 - h - Display the response headers.
 - b - Display the response body.
 
