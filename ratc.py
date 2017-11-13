@@ -160,10 +160,27 @@ def parseRequest( text ):
 
     return request
 
+def injectContextHeaders( request, context ):
+    #print "injectContextHeaders"
+    requestHeaders = request.get('headers')
+    if not requestHeaders:
+        #print "default request headers"
+        requestHeaders = {}
+        request['headers'] = requestHeaders
+    contextHeaders = context.get('headers')
+    if not contextHeaders:
+        #print "default context headers"
+        contextHeaders = {}
+        context['headers'] = contextHeaders
+    for name, value in contextHeaders.iteritems():
+        requestHeaders[ name ] = value
+        #print "Header=%s: %s" % ( name, value )
+    return request
+
 def executeRequest( request, context ):
     method = request.get('method')
     if method:
-        method = method.uppe()
+        method = method.upper()
     proxies = context.get( 'proxies' )
     cookies = context.get( 'cookies' )
     response = None
@@ -189,8 +206,9 @@ def printRequest( request ):
     if 'headers' in request:
         for name, value in request['headers'].iteritems():
             print "%s: %s" % ( name, value )
-    print
-    print "%s" % ( request['body'] )
+    if 'body' in request:
+        print
+        print "%s" % ( request['body'] )
 
 def isContentTypeResponse( response, contentTypeList, default=False ):
     isContentType = default
@@ -253,6 +271,7 @@ def main():
         concrete = renderTemplate( template, context )
 
         request = parseRequest( concrete )
+        request = injectContextHeaders( request, context )
         if args.test:
             printRequest( request )
             sys.exit( 0 )
