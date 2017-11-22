@@ -1,13 +1,13 @@
 #!/usr/bin/python
 
 import argparse
+import base64
 import datetime
 import getpass
 import jinja2, json, jsonpath_rw
 import os
 import requests
 import sys
-import traceback
 import yaml
 
 class FatalError(Exception):
@@ -28,7 +28,6 @@ def parseArgs():
     parser.add_argument( "-o", "--output", default="shb", help="Output options", metavar="format" )
     parser.add_argument( "-e", "--extract", help="extract from body via JSONPath query", metavar="query" )
     parser.add_argument( "-t", "--test", action="store_true", help="test template expansion without submitting request" )
-    #parser.add_argument( "-d", "--debug", action="store_true", help="enable debug logging" )
     parser.add_argument( "context", nargs='*', help="context values and file names" )
     parser.add_argument( "template", nargs=1, help="template file name" )
     args = parser.parse_args()
@@ -40,6 +39,9 @@ def now( format="%Y%m%d%H%M%S" ):
 def user():
     return getpass.getuser()
 
+def base64encode( input ):
+    return base64.b64encode( input )
+
 def createEnvironment():
     environment = jinja2.Environment(
         loader = jinja2.FileSystemLoader( './' ),
@@ -47,6 +49,7 @@ def createEnvironment():
         autoescape=True )
     environment.globals['now'] = now
     environment.globals['user'] = user
+    environment.globals['base64encode'] = base64encode
     return environment
 
 def loadTemplate( environment, templateFileNames ):
